@@ -297,6 +297,13 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
     value = value.copyWith(isPlaying: false);
     await _applyPlayPause();
   }
+  
+  Future<void> setLive() async {
+    await _channel.invokeMethod(
+      'setLive',
+      <String, dynamic>{'textureId': _textureId},
+    );
+  }
 
   Future<void> _applyLooping() async {
     if (!value.initialized || isDisposed) {
@@ -376,6 +383,19 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       'location': moment.inMilliseconds,
     });
     value = value.copyWith(position: moment);
+  }
+
+  Future<void> seekToDate(DateTime date, Duration acceptableDelay) async {
+    if (isDisposed) {
+      return;
+    }
+
+    final int newPosition = await _channel.invokeMethod('seekToDate', <String, dynamic>{
+      'textureId': _textureId,
+      'whereToPutTheHeadInUTC': date.millisecondsSinceEpoch,
+      'acceptableDelay': acceptableDelay.inMilliseconds,
+    });
+    value = value.copyWith(position: new Duration(milliseconds: newPosition));
   }
 
   /// Sets the audio volume of [this].

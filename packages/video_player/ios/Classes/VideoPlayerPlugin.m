@@ -85,6 +85,7 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
             context:playbackBufferFullContext];
 
   _player = [AVPlayer playerWithPlayerItem:item];
+  _player.automaticallyWaitsToMinimizeStalling = false;
   _player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
   [[NSNotificationCenter defaultCenter] addObserverForName:AVPlayerItemDidPlayToEndTimeNotification
                                                     object:[_player currentItem]
@@ -100,9 +101,9 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
                                                   }
                                                 }];
   NSDictionary* pixBuffAttributes = @{
-    (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
-    (id)kCVPixelBufferIOSurfacePropertiesKey : @{}
-  };
+                                      (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
+                                      (id)kCVPixelBufferIOSurfacePropertiesKey : @{}
+                                      };
   _videoOutput = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:pixBuffAttributes];
 
   AVAsset* asset = [item asset];
@@ -127,7 +128,7 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
   };
   [asset loadValuesAsynchronouslyForKeys:@[ @"tracks" ] completionHandler:assetCompletionHandler];
   _displayLink =
-      [CADisplayLink displayLinkWithTarget:frameUpdater selector:@selector(onDisplayLink:)];
+  [CADisplayLink displayLinkWithTarget:frameUpdater selector:@selector(onDisplayLink:)];
   [_displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
   _displayLink.paused = YES;
   return self;
@@ -153,10 +154,10 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
       case AVPlayerStatusFailed:
         if (_eventSink != nil) {
           _eventSink([FlutterError
-              errorWithCode:@"VideoError"
-                    message:[@"Failed to load video: "
-                                stringByAppendingString:[item.error localizedDescription]]
-                    details:nil]);
+                      errorWithCode:@"VideoError"
+                      message:[@"Failed to load video: "
+                               stringByAppendingString:[item.error localizedDescription]]
+                      details:nil]);
         }
         break;
       case AVPlayerItemStatusUnknown:
@@ -202,11 +203,11 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
   if (_eventSink && _isInitialized) {
     CGSize size = [self.player currentItem].presentationSize;
     _eventSink(@{
-      @"event" : @"initialized",
-      @"duration" : @([self duration]),
-      @"width" : @(size.width),
-      @"height" : @(size.height),
-    });
+                 @"event" : @"initialized",
+                 @"duration" : @([self duration]),
+                 @"width" : @(size.width),
+                 @"height" : @(size.height),
+                 });
   }
 }
 
@@ -230,6 +231,16 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
 
 - (void)seekTo:(int)location {
   [_player seekToTime:CMTimeMake(location, 1000)];
+}
+
+- (void)seekToDate:(int64_t)whereToPutTheHeadInUTC acceptableDelay:(int64_t)acceptableDelay {
+  int64_t currentDatetime = (int64_t)_player.currentItem.currentDate.timeIntervalSince1970 * 1000;
+  int delay = (int)(currentDatetime - whereToPutTheHeadInUTC);
+  NSLog(@"head: %@, delay: %@", @(whereToPutTheHeadInUTC), @(delay));
+  if (abs(delay) > acceptableDelay) {
+    [_player seekToDate:[NSDate dateWithTimeIntervalSince1970:(whereToPutTheHeadInUTC) / 1000.0]];
+//    [_player seekToTime:CMTimeAdd(_player.currentItem.currentTime, CMTimeMakeWithSeconds(-delay/1000.0, _player.currentItem.currentTime.timescale)) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+  }
 }
 
 - (void)setIsLooping:(bool)isLooping {
@@ -289,8 +300,8 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
 @implementation FLTVideoPlayerPlugin
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
   FlutterMethodChannel* channel =
-      [FlutterMethodChannel methodChannelWithName:@"flutter.io/videoPlayer"
-                                  binaryMessenger:[registrar messenger]];
+  [FlutterMethodChannel methodChannelWithName:@"flutter.io/videoPlayer"
+                              binaryMessenger:[registrar messenger]];
   FLTVideoPlayerPlugin* instance = [[FLTVideoPlayerPlugin alloc] initWithRegistrar:registrar];
   [registrar addMethodCallDelegate:instance channel:channel];
 }
@@ -335,9 +346,9 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
     int64_t textureId = [_registry registerTexture:player];
     frameUpdater.textureId = textureId;
     FlutterEventChannel* eventChannel = [FlutterEventChannel
-        eventChannelWithName:[NSString stringWithFormat:@"flutter.io/videoPlayer/videoEvents%lld",
-                                                        textureId]
-             binaryMessenger:_messenger];
+                                         eventChannelWithName:[NSString stringWithFormat:@"flutter.io/videoPlayer/videoEvents%lld",
+                                                               textureId]
+                                         binaryMessenger:_messenger];
     [eventChannel setStreamHandler:player];
     player.eventChannel = eventChannel;
     _players[@(textureId)] = player;
@@ -361,10 +372,17 @@ static void* playbackBufferFullContext = &playbackBufferFullContext;
       [player play];
       result(nil);
     } else if ([@"position" isEqualToString:call.method]) {
+      NSLog(@"date: %@", @([player.player.currentItem.currentDate timeIntervalSince1970]));
+
       result(@([player position]));
     } else if ([@"seekTo" isEqualToString:call.method]) {
       [player seekTo:[[argsMap objectForKey:@"location"] intValue]];
       result(nil);
+    } else if ([@"seekToDate" isEqualToString:call.method]) {
+      int64_t whereToPutTheHeadInUTC = [[argsMap objectForKey:@"whereToPutTheHeadInUTC"] longLongValue];
+      int64_t acceptableDelay = [[argsMap objectForKey:@"acceptableDelay"] intValue];
+      [player seekToDate:whereToPutTheHeadInUTC acceptableDelay:acceptableDelay];
+      result(@([player position]));
     } else if ([@"pause" isEqualToString:call.method]) {
       [player pause];
       result(nil);

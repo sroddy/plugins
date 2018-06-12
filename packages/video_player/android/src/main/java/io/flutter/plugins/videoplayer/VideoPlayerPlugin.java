@@ -11,6 +11,7 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Log;
 import android.view.Surface;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlaybackException;
@@ -18,9 +19,10 @@ import com.google.android.exoplayer2.ExoPlayerFactory;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.Player.DefaultEventListener;
 import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.Timeline;
 import com.google.android.exoplayer2.audio.AudioAttributes;
-import com.google.android.exoplayer2.source.ExtractorMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.TrackSelector;
 import com.google.android.exoplayer2.upstream.DataSource;
@@ -34,6 +36,8 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry.Registrar;
 import io.flutter.view.TextureRegistry;
+
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -84,7 +88,7 @@ public class VideoPlayerPlugin implements MethodCallHandler {
       }
 
       MediaSource mediaSource =
-          new ExtractorMediaSource.Factory(dataSourceFactory).createMediaSource(uri);
+          new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(uri);
       exoPlayer.prepare(mediaSource);
 
       setupVideoPlayer(eventChannel, textureEntry, result);
@@ -157,13 +161,9 @@ public class VideoPlayerPlugin implements MethodCallHandler {
       }
     }
 
-    void play() {
-      exoPlayer.setPlayWhenReady(true);
-    }
+    void play() { exoPlayer.setPlayWhenReady(true); }
 
-    void pause() {
-      exoPlayer.setPlayWhenReady(false);
-    }
+    void pause() { exoPlayer.setPlayWhenReady(false); }
 
     void setLooping(boolean value) {
       exoPlayer.setRepeatMode(value ? REPEAT_MODE_ALL : REPEAT_MODE_OFF);
@@ -180,6 +180,28 @@ public class VideoPlayerPlugin implements MethodCallHandler {
 
     long getPosition() {
       return exoPlayer.getCurrentPosition();
+    }
+
+    int seekToDateIterations = 0;
+    long lastDelay;
+
+    void seekToDate(long whereToPutTheHeadInUTC, long acceptableDelay) {
+      Timeline timeline = exoPlayer.getCurrentTimeline();
+
+      // the absolute start time in UTC of the current window
+      long windowStartTimeMs = timeline.getWindow(0, new Timeline.Window()).windowStartTimeMs;
+
+      Log.d("windowStartTimeMs", Long.valueOf(windowStartTimeMs).toString());
+
+      long newPosition = whereToPutTheHeadInUTC - windowStartTimeMs;
+      Log.d("newPosition", Long.valueOf(newPosition).toString());
+
+      long delay = Math.abs(exoPlayer.getCurrentPosition() - newPosition);
+      Log.d("delay", Long.valueOf(delay).toString());
+
+      if (delay > acceptableDelay) {
+        exoPlayer.seekTo(newPosition);
+      }
     }
 
     private void sendInitialized() {
@@ -315,6 +337,12 @@ public class VideoPlayerPlugin implements MethodCallHandler {
         int location = ((Number) call.argument("location")).intValue();
         player.seekTo(location);
         result.success(null);
+        break;
+      case "seekToDate":
+        long whereToPutTheHeadInUTC = ((Number) call.argument("whereToPutTheHeadInUTC")).longValue();
+        long acceptableDelay = ((Number) call.argument("acceptableDelay")).longValue();
+        player.seekToDate(whereToPutTheHeadInUTC, acceptableDelay);
+        result.success(player.getPosition());
         break;
       case "position":
         result.success(player.getPosition());
