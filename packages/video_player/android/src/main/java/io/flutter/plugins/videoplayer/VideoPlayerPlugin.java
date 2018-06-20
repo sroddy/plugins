@@ -14,6 +14,7 @@ import android.os.Build;
 import android.util.Log;
 import android.view.Surface;
 import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.ExoPlayerFactory;
 import com.google.android.exoplayer2.Player;
@@ -26,6 +27,7 @@ import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.TrackSelector;
 import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory;
@@ -69,8 +71,15 @@ public class VideoPlayerPlugin implements MethodCallHandler {
       this.eventChannel = eventChannel;
       this.textureEntry = textureEntry;
 
-      TrackSelector trackSelector = new DefaultTrackSelector();
-      exoPlayer = ExoPlayerFactory.newSimpleInstance(context, trackSelector);
+      DefaultBandwidthMeter.Builder bandwidth = new DefaultBandwidthMeter.Builder();
+//      bandwidth.setInitialBitrateEstimate(300000);
+
+      TrackSelector trackSelector = new DefaultTrackSelector(bandwidth.build());
+      DefaultLoadControl.Builder loadControlBuilder = new DefaultLoadControl.Builder();
+//      loadControlBuilder
+//              .setBufferDurationsMs(10000, 20000, 2500, 2500);
+
+      exoPlayer = ExoPlayerFactory.newSimpleInstance(context, trackSelector, loadControlBuilder.createDefaultLoadControl());
 
       Uri uri = Uri.parse(dataSource);
 
@@ -196,10 +205,10 @@ public class VideoPlayerPlugin implements MethodCallHandler {
       long newPosition = whereToPutTheHeadInUTC - windowStartTimeMs;
       Log.d("newPosition", Long.valueOf(newPosition).toString());
 
-      long delay = Math.abs(exoPlayer.getCurrentPosition() - newPosition);
+      long delay = exoPlayer.getCurrentPosition() - newPosition;
       Log.d("delay", Long.valueOf(delay).toString());
 
-      if (delay > acceptableDelay) {
+      if (Math.abs(delay) > acceptableDelay) {
         exoPlayer.seekTo(newPosition);
       }
     }
