@@ -4,6 +4,7 @@
 
 package io.flutter.plugins.urllauncher;
 
+import android.app.ActionBar;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -13,6 +14,7 @@ import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.KeyEvent;
+import android.view.MenuItem;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -99,6 +101,10 @@ public class UrlLauncherPlugin implements MethodCallHandler {
     @Override
     public void onCreate(Bundle savedInstanceState) {
       super.onCreate(savedInstanceState);
+      ActionBar actionBar = getActionBar();
+      if (actionBar != null) {
+        actionBar.setDisplayHomeAsUpEnabled(true);
+      }
       webview = new WebView(this);
       setContentView(webview);
       // Get the Intent that started this activity and extract the string
@@ -146,6 +152,17 @@ public class UrlLauncherPlugin implements MethodCallHandler {
         return true;
       }
       return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+      int id = item.getItemId();
+
+      if (id == android.R.id.home) {
+        finish();
+      }
+
+      return super.onOptionsItemSelected(item);
     }
   }
 }
